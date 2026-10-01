@@ -420,7 +420,7 @@
       stroke-dasharray: 5 3;
     }
     
-    /* Встроенные иконки и компактный интерфейс редактора. */
+    /* Embedded icons and compact editor interface. */
 
 
     .brand svg { display: block; width: 100%; height: 100%; }
@@ -838,7 +838,7 @@ License: bitstream-vera
           storageStatus("Project storage changed. Reopen the application.", true);
         };
         const rows = await recentProjects();
-        // Дождаться начального fitCamera перед сохранением нового проекта.
+        // Wait for the initial fitCamera before saving a new project.
         await new Promise(resolve => requestAnimationFrame(resolve));
         state.projectName = uniqueProjectName(rows);
         projectStorage.id = null;
@@ -881,7 +881,7 @@ License: bitstream-vera
       await saveCurrentProject();
       const rows = await recentProjects();
       const conflict = rows.find(row => row.name === name && row.id !== projectStorage.id);
-      if (conflict && !window.confirm(`Хотите перезаписать уже сохраненный в базе проект с именем ${name}?`)) return;
+      if (conflict && !window.confirm(`Overwrite the project named ${name} already saved in the database?`)) return;
       const previousName = state.projectName;
       state.projectName = name;
       try { await saveCurrentProject(conflict?.id); }
@@ -1064,7 +1064,7 @@ License: bitstream-vera
         document.activeElement?.blur();
       });
     
-      // Перехватываем touch до обработчиков фигур и маркеров; мышь работает как раньше.
+      // Capture touch before shape and handle listeners; preserve mouse behavior.
       for (const type of ["pointerdown", "pointermove", "pointerup", "pointercancel", "lostpointercapture"]) {
         els.scene.addEventListener(type, onTouchCamera, { capture: true, passive: false });
       }
@@ -2337,7 +2337,7 @@ License: bitstream-vera
     }
     
     function clampInteractiveZoom(zoom) {
-      // Fit может выйти за обычный диапазон; следующий жест не должен скачком менять масштаб.
+      // Fit may exceed the usual zoom range; avoid a jump on the next gesture.
       return state.camera.zoom<.35||state.camera.zoom>7 ? clamp(zoom,1e-6,1e6) : clamp(zoom,.35,7);
     }
 
@@ -2352,7 +2352,7 @@ License: bitstream-vera
       const visible=state.objects.filter(o=>!o.groupId&&!o.hidden);
       const selected=visible.filter(o=>state.selectedIds.includes(o.id));
       const targets=selected.length?selected:visible;
-      // Масштаб в нашей проекции линейный: перспектива зависит только от ракурса и глубины.
+      // Projection scale is linear; perspective depends only on view angle and depth.
       let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
       const camera=state.camera;
       for(const object of targets) for(const polygon of meshForObject(object).polygons) for(const vertex of polygon.vertices) {
@@ -2363,7 +2363,7 @@ License: bitstream-vera
       }
       if(!Number.isFinite(minX)) {fitWorkplane(status);return;}
       const viewport=cameraViewport();
-      // Оставляем место для ручек выделения по краям видимой области.
+      // Leave room for selection handles at the viewport edges.
       const width=Math.max(1e-9,maxX-minX),height=Math.max(1e-9,maxY-minY);
       camera.zoom=clamp(Math.min(viewport.w*.8/width,viewport.h*.8/height),1e-6,1e6);
       camera.panX=viewport.x+viewport.w/2-BASE_VIEW.cx-(minX+maxX)/2*camera.zoom;
@@ -2445,7 +2445,7 @@ License: bitstream-vera
         const delta=vsub(hit,guide.worldCenter),x=vdot(delta,guide.u),y=vdot(delta,guide.v);
         return {angle:Math.atan2(y,x)*180/Math.PI,distance:Math.hypot(x,y)};
       }
-      // При виде точно с ребра плоскость не имеет обратимой экранной проекции.
+      // An exactly edge-on plane has no invertible screen projection.
       const scale=BASE_VIEW.scale*state.camera.zoom;
       return {angle:Math.atan2(point.y-guide.center.y,point.x-guide.center.x)*180/Math.PI,distance:screenDistance(point,guide.center)/scale};
     }
@@ -2958,7 +2958,7 @@ License: bitstream-vera
     function nudgeDelta(event) {
       const step=(state.snap || 1)*(event.shiftKey ? 10 : 1);
       if (event.ctrlKey || event.metaKey) return [0,0,event.key==="ArrowUp" ? step : event.key==="ArrowDown" ? -step : 0];
-      // ТК сохраняет шаг вдоль осей стола, выбирая ближайшее направление камеры.
+      // Tinkercad keeps the step along workplane axes, choosing the nearest camera direction.
       const quarter=Math.round(state.camera.yaw/(Math.PI/2));
       const x=event.key==="ArrowRight" ? 1 : event.key==="ArrowLeft" ? -1 : 0;
       const y=event.key==="ArrowDown" ? 1 : event.key==="ArrowUp" ? -1 : 0;
@@ -3177,7 +3177,7 @@ License: bitstream-vera
         if (meshPolygon(vertices)) triangles.push(vertices);
         else skipped++;
       };
-      // Проверяем размер, а не слово solid: оно бывает и в бинарном заголовке.
+      // Check the size rather than the word solid, which can also appear in a binary header.
       if (buffer.byteLength >= 84 && 84 + view.getUint32(80, true) * 50 === buffer.byteLength) {
         const total = view.getUint32(80, true);
         if (total > STL_MAX_TRIANGLES) throw new Error("STL exceeds 100,000 triangles.");
@@ -3224,7 +3224,7 @@ License: bitstream-vera
       object.dimensions = parsed.dimensions;
       object.params = {vertices: parsed.vertices};
       object.position = {x:(state.plate.w-object.dimensions.w)/2,y:(state.plate.d-object.dimensions.d)/2,z:0};
-      // Завершаем проверку сетки до изменения сцены и истории.
+      // Finish mesh validation before changing the scene or history.
       const mesh = importedTriangleMesh(object);
       const open = mesh.edges.some(edge=>edge.normals.length!==2);
       clearTouchCamera();
@@ -3405,7 +3405,7 @@ License: bitstream-vera
         }
       }
       draw(solid,gl.TRIANGLES);
-      // Hole — полупрозрачный инструмент; до Group он не режет Solid.
+      // Hole is a translucent tool; it does not cut Solid until grouped.
       gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA,gl.ONE,gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false);
       draw(holes,gl.TRIANGLES,false,true);
       draw(preview,gl.TRIANGLES);
@@ -3462,7 +3462,7 @@ License: bitstream-vera
       return id;
     }
 
-    // Собственное BSP-ядро: выпуклые грани, отсечение плоскостями, union/subtract.
+    // Internal BSP engine: convex faces, plane clipping, union/subtract.
     const CSG_EPSILON = 1e-6;
     const geometryCache = new Map();
     const vadd = (a,b) => a.map((v,i)=>v+b[i]);
@@ -3615,7 +3615,7 @@ License: bitstream-vera
       });
     }
 
-    // Горизонтальные полосы дают выпуклые крышки букв с настоящими просветами.
+    // Horizontal strips produce convex letter caps with real counters.
     function textCaps(contours) {
       const levels=[...new Set(contours.flat().map(p=>p[1]))].sort((a,b)=>a-b),caps=[];
       for(let i=0;i<levels.length-1;i++) {
@@ -3751,7 +3751,7 @@ License: bitstream-vera
         }
         rings.push(ring);
       }
-      // CSG-сервис ТК получает исходные вершины с точностью 0,001 мм.
+      // Tinkercad's CSG service receives source vertices rounded to 0.001 mm.
       const quantize=p=>p.map(v=>Math.sign(v)*Math.round(Math.abs(v)*1000)/1000);
       const cylinder=[],thread=[];
       const triangle=(dest,a,b,c)=>{const face=meshPolygon([a,b,c].map(quantize));if(face)dest.push(face);};
@@ -3813,7 +3813,7 @@ License: bitstream-vera
     }
 
     function roundedBoxFaces(radius, steps) {
-      // Базовый куб 20 мм; последующее изменение размеров масштабирует скругление.
+      // Base cube is 20 mm; subsequent resizing scales the rounding.
       const r=Math.min(radius,9.999)/20, core=.5-r, faces=[];
       const point=(signs,offset)=>offset.map((v,i)=>.5+signs[i]*(core+v));
       const arc=i=>{const a=i/steps*Math.PI/2;return [Math.sin(a),Math.cos(a)];};
@@ -3826,7 +3826,7 @@ License: bitstream-vera
         for(const a of [-1,1])for(const b of [-1,1])for(let i=0;i<steps;i++) {
           const signs=[1,1,1];signs[others[0]]=a;signs[others[1]]=b;
           const vertex=(end,index)=>{const offset=[0,0,0],t=arc(index);offset[axis]=0;offset[others[0]]=r*t[0];offset[others[1]]=r*t[1];const v=point(signs,offset);v[axis]=.5+end*core;return v;};
-          // Каждое ребро строим только один раз, независимо от стороны плоской грани.
+          // Build each edge only once, regardless of the flat face side.
           if(sign===1)faces.push([vertex(-1,i),vertex(1,i),vertex(1,i+1),vertex(-1,i+1)]);
         }
       }
@@ -3879,7 +3879,7 @@ License: bitstream-vera
         const front=section.map(([x,z])=>[x,0,z]),back=section.map(([x,z])=>[x,1,z]);
         loft([front,back]);
       }
-      // Все новые примитивы выпуклы: ориентируем грани наружу до трансформации.
+      // All new primitives are convex: orient faces outward before transforming.
       const all=faces.flat(),center=vmul(all.reduce((sum,v)=>vadd(sum,v),[0,0,0]),1/all.length);
       return faces.map(vertices=>{
         const face=meshPolygon(vertices);if(!face)return null;
@@ -3988,7 +3988,7 @@ License: bitstream-vera
     function meshPointKey(point) { return point.map(value=>Math.round(value/CSG_EPSILON)).join(","); }
 
     function finishMesh(polygons, removeSpikes = false) {
-      // Общие вершины на рёбрах устраняют T-стыки после BSP-отсечения.
+      // Shared edge vertices remove T-junctions after BSP clipping.
       const vertices=new Map();
       for (const polygon of polygons) for (const vertex of polygon.vertices) {
         const key=meshPointKey(vertex); if (!vertices.has(key)) vertices.set(key,vertex);
@@ -4011,8 +4011,8 @@ License: bitstream-vera
           parts.sort((a,b)=>a.t-b.t); boundary.push(...parts.map(part=>part.v));
         }
         if(removeSpikes) {
-          // На узких CSG-фрагментах вставка общей вершины может дать путь A-B-A.
-          // Убираем только этот нулевой обход, не смещая поверхность резьбы.
+          // Inserting a shared vertex into a narrow CSG fragment can produce an A-B-A path.
+          // Remove only this zero-length detour without moving the thread surface.
           let changed=true;
           while(changed&&boundary.length>=3) {
             changed=false;
