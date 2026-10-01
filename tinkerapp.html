@@ -470,7 +470,8 @@
     .segmented button svg { width: 38px; height: 38px; }
     .segmented button.is-active { background: #f0f8fd; color: #1685c1; border-color: #7fc8ed; }
     .shape-card.is-placing { border-color:#59aee3; background:#edf7ff; }
-    #shapeParams { display:grid; gap:12px; }
+    #shapeParams, #boxParams { display:grid; gap:12px; }
+    #boxParams:empty { display:none; }
     #shapeParams textarea, #shapeParams select { width:100%; font:inherit; border:1px solid #e1e8ee; border-radius:8px; padding:7px 9px; resize:vertical; color:#334b5d; }
     .statusbar { justify-content: space-between; gap: 12px; }
     #autosaveStatus[data-error="true"] { color: #b43c32; }
@@ -581,6 +582,7 @@
                 Color
                 <input id="objectColor" type="color">
               </label>
+              <div id="boxParams"></div>
               <div class="triple">
                 <label>X <input id="posX" type="number" step="0.01"></label>
                 <label>Y <input id="posY" type="number" step="0.01"></label>
@@ -1145,6 +1147,7 @@ License: bitstream-vera
     };
 
     const SHAPE_FIELDS = {
+      box:[['radius','Radius',0,20,.1],['steps','Steps',1,20,1]],
       sphere:[['steps','Steps',4,64,1]],
       cone:[['topRadius','Top Radius',0,1000,.1],['baseRadius','Base Radius',0,1000,.1],['height','Height',.01,10000,.1],['sides','Sides',3,96,1]],
       pyramid:[['sides','Sides',3,64,1]],
@@ -1168,6 +1171,7 @@ License: bitstream-vera
         hidden: false,
         locked: false,
       };
+      if (type === "box") base.params = { radius: 0, steps: 10 };
       if (type === "cylinder") {
         base.name = "Cylinder";
         base.dimensions = { w: 20, d: 20, h: 20 };
@@ -2532,7 +2536,7 @@ License: bitstream-vera
           ...cylinderRingPoints(object, object.position.z, cylinderSides(object)),
           ...cylinderRingPoints(object, object.position.z + object.dimensions.h, cylinderSides(object)),
         ]
-        : (["text","group","mesh"].includes(object.type)||SHAPES[object.type]) ? meshForObject(object).polygons.flatMap(p=>p.vertices) : Object.values(worldBoxCorners(object));
+        : (["text","group","mesh"].includes(object.type)||SHAPES[object.type]||(object.type==='box'&&object.params.radius>0)) ? meshForObject(object).polygons.flatMap(p=>p.vertices) : Object.values(worldBoxCorners(object));
       if(!points.length) {const {x,y,z}=object.position;return {minX:x,minY:y,minZ:z,maxX:x,maxY:y,maxZ:z};}
       return points.reduce((bounds, point) => ({
         minX: Math.min(bounds.minX, point[0]),
@@ -2578,21 +2582,23 @@ License: bitstream-vera
     
     function renderShapeParams(object) {
       els.shapeParams.innerHTML = "";
+      const boxParams=document.getElementById('boxParams');boxParams.innerHTML='';
+      const target=object.type==='box'?boxParams:els.shapeParams;
       for(const [key,title,min,max,step] of SHAPE_FIELDS[object.type]||[]) {
         const label=document.createElement('label');label.textContent=title;
-        const input=document.createElement('input');input.type='number';input.id='param-'+key;input.min=min;input.max=max;input.step=step;input.value=key==='height'?object.dimensions.h:object.params[key];
+        const input=document.createElement('input');input.type='number';input.id='param-'+key;input.min=min;input.max=max;input.step=step;input.value=key==='height'?object.dimensions.h:object.params[key]??(key==='radius'?0:10);
         input.addEventListener('change',()=>{
-          const old=key==='height'?object.dimensions.h:object.params[key],value=clamp(readNumber(input,old),min,max),next=step===1?Math.round(value):value;
+          const old=key==='height'?object.dimensions.h:object.params[key]??(key==='radius'?0:10),value=clamp(readNumber(input,old),min,max),next=step===1?Math.round(value):value;
           if(key==='height'){resizeSelectionDimension('z',next);return;}
           if(object.type==='cone'&&['topRadius','baseRadius'].includes(key)&&next===0&&object.params[key==='topRadius'?'baseRadius':'topRadius']===0){render();return;}
-          if(next===old)return;
+          if(next===old){input.value=next;return;}
           if(object.type==='isoThread'){editIsoThread(object,{[key]:next});return;}
           pushHistory('Edit '+title);
           const radius=object.type==='cone'?Math.max(object.params.topRadius,object.params.baseRadius):null;
           object.params[key]=next;
           if(radius&&['topRadius','baseRadius'].includes(key)) {const scale=Math.max(object.params.topRadius,object.params.baseRadius)/radius;object.dimensions.w*=scale;object.dimensions.d*=scale;}
           render();
-        });label.append(input);els.shapeParams.append(label);
+        });label.append(input);target.append(label);
       }
 
       if (object.type === "cylinder") {
@@ -2915,7 +2921,7 @@ License: bitstream-vera
       const command = event.ctrlKey || event.metaKey;
       if(!command&&event.key.toLowerCase()==="c") {state.forcePlacementPlane=true;if(state.placement?.pointer)updatePlacement(state.placement.pointer);return;}
       if(state.placement)return;
-      if (command && event.key.toLowerCase() === "a") {
+      if (command && (event.code === "KeyA" || (!event.code && event.key.toLowerCase() === "a"))) {
         event.preventDefault();
         state.selectedIds=state.objects.filter(object=>!object.groupId && !object.hidden).map(object=>object.id);
         state.activeControl=null;state.hoveredControl=null;
@@ -3069,6 +3075,10 @@ License: bitstream-vera
         if (!object.dimensions || !["w", "d", "h"].every(axis => finite(object.dimensions[axis]) && (object.type === "group" ? object.dimensions[axis] >= 0 : object.dimensions[axis] > 0))) fail();
         if (object.deformation !== undefined && (!Array.isArray(object.deformation) || object.deformation.length !== 9 || !object.deformation.every(finite))) fail();
         object.params ||= {};
+        if (object.type === 'box') {
+          object.params.radius ??= 0;object.params.steps ??= 10;
+          for(const [key,,min,max,step] of SHAPE_FIELDS.box)if(!finite(object.params[key])||object.params[key]<min||object.params[key]>max||(step===1&&!Number.isInteger(object.params[key])))fail();
+        }
         if (object.type === "mesh") {
           const vertices = object.params.vertices;
           if (!Array.isArray(vertices) || !vertices.length || vertices.length % 9 || vertices.length > STL_MAX_TRIANGLES * 9 ||
@@ -3802,6 +3812,37 @@ License: bitstream-vera
       return {polygons,triangles:local.triangles.map(t=>{const triangle=t.map(transform);return reversed?triangle.reverse():triangle;}),edges:local.edges.map(e=>({a:transform(e.a),b:transform(e.b),normals:e.normals.map(n=>normals.get(n))}))};
     }
 
+    function roundedBoxFaces(radius, steps) {
+      // Базовый куб 20 мм; последующее изменение размеров масштабирует скругление.
+      const r=Math.min(radius,9.999)/20, core=.5-r, faces=[];
+      const point=(signs,offset)=>offset.map((v,i)=>.5+signs[i]*(core+v));
+      const arc=i=>{const a=i/steps*Math.PI/2;return [Math.sin(a),Math.cos(a)];};
+      for(const axis of [0,1,2])for(const sign of [-1,1]) {
+        const others=[0,1,2].filter(i=>i!==axis);
+        faces.push([[-1,-1],[1,-1],[1,1],[-1,1]].map(pair=>{
+          const v=[.5,.5,.5];v[axis]+=.5*sign;
+          others.forEach((k,i)=>v[k]+=pair[i]*core);return v;
+        }));
+        for(const a of [-1,1])for(const b of [-1,1])for(let i=0;i<steps;i++) {
+          const signs=[1,1,1];signs[others[0]]=a;signs[others[1]]=b;
+          const vertex=(end,index)=>{const offset=[0,0,0],t=arc(index);offset[axis]=0;offset[others[0]]=r*t[0];offset[others[1]]=r*t[1];const v=point(signs,offset);v[axis]=.5+end*core;return v;};
+          // Каждое ребро строим только один раз, независимо от стороны плоской грани.
+          if(sign===1)faces.push([vertex(-1,i),vertex(1,i),vertex(1,i+1),vertex(-1,i+1)]);
+        }
+      }
+      for(const x of [-1,1])for(const y of [-1,1])for(const z of [-1,1]) {
+        const vertex=(i,j)=>{const t=arc(i),p=arc(j);return point([x,y,z],[r*t[0]*p[1],r*t[0]*p[0],r*t[1]]);};
+        for(let i=0;i<steps;i++)for(let j=0;j<steps;j++) {
+          if(i===0)faces.push([vertex(0,j),vertex(1,j),vertex(1,j+1)]);
+          else faces.push([vertex(i,j),vertex(i+1,j),vertex(i+1,j+1)],[vertex(i,j),vertex(i+1,j+1),vertex(i,j+1)]);
+        }
+      }
+      return faces.map(vertices=>{
+        const face=meshPolygon(vertices);if(!face)return null;
+        return vdot(face.normal,vsub(face.vertices[0],[.5,.5,.5]))<0?[...face.vertices].reverse():face.vertices;
+      }).filter(Boolean);
+    }
+
     function shapeFaces(object) {
       if(object.type==='isoThread') {const mesh=isoThreadLocalMesh(object.params);return mesh.polygons.map(p=>p.vertices.map(v=>v.map((x,i)=>(x-mesh.min[i])/mesh.size[i])));}
       const type=object.type,p=object.params,faces=[];
@@ -3866,7 +3907,10 @@ License: bitstream-vera
         }
         return faces;
       }
-      if(SHAPES[object.type])return shapeFaces(object).map(face=>meshPolygon(face.map(v=>transformObjectPoint(object,...v.map((x,i)=>object.position['xyz'[i]]+x*object.dimensions[['w','d','h'][i]]))))).filter(Boolean);
+      if(SHAPES[object.type]||(object.type==='box'&&object.params.radius>0)) {
+        const faces=object.type==='box'?roundedBoxFaces(object.params.radius,object.params.steps??10):shapeFaces(object);
+        return faces.map(face=>meshPolygon(face.map(v=>transformObjectPoint(object,...v.map((x,i)=>object.position['xyz'[i]]+x*object.dimensions[['w','d','h'][i]]))))).filter(Boolean);
+      }
       if(object.type==="text")return textPolygons(object);
       if (object.type==="cylinder") {
         const count=cylinderSides(object);
